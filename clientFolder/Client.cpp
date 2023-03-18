@@ -29,21 +29,36 @@ Client::Client(char* ip , char* port ,char* fil) //需要传入ip地址 端口�
     printf("##############----map file %s to memory success --############### \n",fil);
 
     printf("filsize:%d\n",strlen(mapMem_p));
-    printf("%c\n",mapMem_p[4]);
 
-    for(int i =0 ;i <= strlen(mapMem_p);i++)
-    {
-        printf("index = %d\n",i);
-        printf("%c\n",mapMem_p[i]);
-    }
     // //打印一下映射过去的内容
     // printf("%s",mapMem_p);
+
+    //试试把映射的内存存入新的文件中
+    // struct st_filInfo newfil;
+    // newfil.size = filInfo->size;
+    // memset(&newfil.filname,0,sizeof(newfil.filname));
+    // memcpy(&newfil.filname,"newfil.txt",sizeof("newfil.txt"));
+
+    // if(creat_fil(&newfil)==false)
+    // {
+    //     printf("create file failed\n");
+    //     exit(-1);
+    // }
+    int fd = open( "newfil.txt",O_RDWR);
+    for(int i = 0 ;i < strlen(mapMem_p) ;i++ )
+    {
+        write(fd ,mapMem_p+i,1);
+        printf("%c",*(mapMem_p+i));
+    }
+    close(fd);
 
 }
 Client::~Client()
 {
-    delete mapMem_p;
-    delete filInfo;
+    // free(mapMem_p) ; 这里不能释放 会出现segment default的bug
+    //取消文件映射
+    munmap(mapMem_p,filInfo->size);
+    free(filInfo) ;
 }
 
 //初始化服务器地址

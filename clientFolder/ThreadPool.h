@@ -1,3 +1,5 @@
+
+#pragma once
 #ifndef _THREADPOO_H_
 #define _THREADPOO_H_
 
@@ -11,6 +13,14 @@ using namespace std;
 
 using callback = void(*)(void*);
 
+
+struct args
+{
+    int fd;
+    char* buf[100];
+    int n ; 
+    struct epoll_event* event; 
+};
 
 template <typename T>
 class Task
@@ -39,7 +49,7 @@ public:
     ThreadPool(int min , int max);
 
     //添加任务到任务队列
-    void addTask(Task<T>& task);
+    void addTask(Task<T>* task);
 
     // 重载 添加任务到任务队列
     // f: 函数指针

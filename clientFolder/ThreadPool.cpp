@@ -111,10 +111,10 @@ int ThreadPool<T>:: getLiveNum()
 
 //添加任务到任务队列
 template <typename T>
-void ThreadPool<T>:: addTask(Task<T>& task)
+void ThreadPool<T>:: addTask(Task<T>* task)
 {
-    Taskptr<T>  ptr(task);
-    //如果线程池关闭了 就绝不进行处理
+    Taskptr<T>  ptr(*task);
+    //如果线程池关闭了 就不进行处理
     if(isShutDown){return ;}
     //给任务队列上锁
     pthread_mutex_lock(&m_taskQ);
@@ -190,7 +190,6 @@ void* ThreadPool<T>:: worker(void* arg)
         pool->taskQ.pop();
         pthread_mutex_unlock(&pool->m_taskQ);
 
-        task->func(task->arg);
 
         pthread_mutex_lock(&pool->poolMutex);
         pool->busyNum++;

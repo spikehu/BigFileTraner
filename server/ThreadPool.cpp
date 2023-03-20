@@ -130,12 +130,14 @@ void ThreadPool<T>:: addTask(Task<T>* task)
 template <typename T>
 void ThreadPool<T>:: addTask(callback f ,void* arg)
 {
+    
     if(isShutDown){return ;}
     //给队列上锁
     pthread_mutex_lock(&m_taskQ);
     //生成智能指针
     Taskptr<T> tsk(new Task<T>(f , arg));
     taskQ.push(tsk);
+    printf("添加一个任务到队列\n");
     pthread_mutex_unlock(&m_taskQ);
    
     //唤醒等待工作的线程
@@ -188,6 +190,7 @@ void* ThreadPool<T>:: worker(void* arg)
         //取出一个任务进行执行
         Taskptr<T> task = pool->taskQ.front();
         pool->taskQ.pop();
+        printf("取出一个任务\n");
         pthread_mutex_unlock(&pool->m_taskQ);
 
 

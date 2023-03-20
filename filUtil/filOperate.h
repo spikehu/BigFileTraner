@@ -18,6 +18,10 @@
 #define FILNAMESIZE 100 //文件名最大长度
 #define SEND_RECV_SIZE 65536 //每次接收和发送的字节数量 64k
 #define BLOCKSIZE 536870912 //对文件的分块大小 这是512M 客户端进行划分
+#define INTSIZE 4
+#define type_filinfo -1  //发送文件信息前先发送-1表示传输的是文件信息
+#define type_fildata  1  //发送文件内容前发送1 表示传输的是数据
+
 
 struct st_filInfo
 {
@@ -44,6 +48,8 @@ struct conn
     int block_size; //分块发送的大小
     int fil_size; //文件大小
 };
+
+
 
 //filname:文件名字
 bool creat_fil(struct st_filInfo* filInfo);

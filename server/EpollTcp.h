@@ -15,6 +15,7 @@
 #include "ThreadPool.h"
 #include "ThreadPool.cpp"
 #include <string>
+#include "filOperate.h"
 
 
 #define BACKLOG 20
@@ -40,7 +41,7 @@ public:
     EpollTcp(char *arg);
     EpollTcp()=delete;
     int wait();
-    static void  mySend(void* arg);
+    static void  work(void* arg);
    
 
 private:

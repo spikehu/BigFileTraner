@@ -8,25 +8,15 @@ Client::Client(char* ip , char* port ,char* fil) //需要传入ip地址 端口�
 {
     //初始化文件信息
     filInfo = initFileInfo(fil);
-
     initServAddr(ip,port);
-    sockfd = socket(AF_INET ,SOCK_STREAM,0);
-    if(connectServer() == false)
-    {
-        printf("connectServer failed\n");
-        exit(-1);
-    }
-    
-    printf("connect to %s:%s\n",ip,port);
-
-    //连接成功 进行文件映射
+    //进行文件映射
     mapMem_p = myMmap(filInfo);
     if(mapMem_p == NULL)
     {
         printf("myMmap failed\n");
         exit(-1);
     }
-    printf("##############----map file %s to memory success --############### \n",fil);
+    sendFileInfo(filInfo);
 
 }
 Client::~Client()
@@ -35,6 +25,7 @@ Client::~Client()
     //取消文件映射
     munmap(mapMem_p,filInfo->size);
     free(filInfo) ;
+    close(filFd);
 }
 
 //初始化服务器地址
@@ -46,15 +37,63 @@ inline void Client::initServAddr(char* ip ,char* port)
 }
 
 //连接到服务器端
-bool Client::connectServer()
+//成功返回套接字
+int Client::connectServer()
 {
+    int sockfd  = socket(AF_INET,SOCK_STREAM,0);
     socklen_t socklen = sizeof(serv_addr);
     if(connect(sockfd,(struct sockaddr*)&serv_addr,socklen)==-1)
     {
         perror("connect failed:");
-        return false;
+        return -1;
     }
+    return sockfd;
+}
 
+//发送文件数据
+int Client::sendData(void* buf , int send_size)
+{
+        char* sendBuf = (char*)malloc(send_size+INTSIZE);
+        memset(sendBuf,0,sizeof(sendBuf+INTSIZE));
+
+        int* int_size = new int(send_size);
+        memcpy(sendBuf,int_size,INTSIZE);
+        memcpy(sendBuf+INTSIZE,buf,send_size);
+
+        int data_send_fd = connectServer();
+
+        send_size += INTSIZE;
+        int totalSend  = 0 ;
+        int left_send  = send_size; //还需要发送的数据
+        while(totalSend!=send_size)
+        {
+            int cur_send = send(data_send_fd,sendBuf,left_send,0);
+            if(cur_send==-1)
+            {
+                printf("发送失败\n");
+                exit(-1);
+            }
+            totalSend += cur_send;
+            left_send = send_size - totalSend;
+        }
+        printf("发送了%d个字节\n",totalSend);
+        delete int_size;
+        close(data_send_fd);
+        return totalSend;
+}
+
+int Client::sendFileInfo(struct st_filInfo* filInfo)
+{
+    //发送文件信息
+    char* sendBytes = (char*)malloc(sizeof(struct st_filInfo)+INTSIZE);
+    printf("sizeof(struct st_filInfo) = %d\n",sizeof(struct st_filInfo));
     
-    return true;
+    memset(sendBytes,0,sizeof(sendBytes));
+    int send_type = type_filinfo;
+    memcpy(sendBytes,(&send_type),INTSIZE);
+
+    memcpy(sendBytes+INTSIZE,filInfo,sizeof(struct st_filInfo));
+
+    sendData(sendBytes,sizeof(struct st_filInfo)+INTSIZE);
+    free(sendBytes);
 }

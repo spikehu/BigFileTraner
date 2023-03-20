@@ -38,7 +38,7 @@ struct st_filInfo* initFileInfo(const char* filName )
     }
 
     filInfo = (struct st_filInfo*)malloc(sizeof(struct st_filInfo));
-    memset(filInfo,0,sizeof(filInfo));
+    memset(filInfo,0,sizeof(struct st_filInfo));
 
     struct stat statbuf;
     stat(filName,&statbuf);
@@ -69,6 +69,5 @@ char* myMmap(struct st_filInfo* filInfo)
         return NULL;
     }
     close(fd);
-
     return p;
 }

@@ -3,11 +3,13 @@
 #include "ThreadPool.h"
 using namespace std;
 
+string loadFolder = "upload/";
+
 int fil_info_size = sizeof(struct st_filInfo);
 
 void EpollTcp::work(void* arg)
 {
-    struct args* send_arg = (struct args*)arg;
+    struct st_args* send_arg = (struct st_args*)arg;
     //接收数据
 
     //将前4个字节取出 表示后面数据的长度
@@ -28,34 +30,47 @@ void EpollTcp::work(void* arg)
             exit(-1);
         }
     }
-
-    //根据类型决定是接收文件数据 还是接受文件信息
-
+    
     printf("要有%d个字节传来\n",*(int*)size);
-
+    int recv_size = *(int*)size;
     int type = -2 ;
     memcpy(&type,recv_type,INTSIZE);
     printf("type == %d\n",type);
 
 
-    char recv_buf[fil_info_size];
-    struct st_filInfo* fil = (struct st_filInfo*)malloc(sizeof(struct st_filInfo));
-
-    
-    //接收文件信息并且打印
-    for(int i =0 ;i < fil_info_size;i++)
+    //根据类型决定是接收文件数据 还是接受文件信息
+    switch(type)
     {
-        if(recv(send_arg->event->data.fd,recv_buf+i,1,0) ==-1)
-        {
-            perror("recv struct st_filInfo failed\n");
-            exit(-1);
-        }
+        case type_filinfo:
+            //1.接受文件信息 
+            //2.在服务端创建文件
+            //3.将创建的文件映射到内存中
+            //4.并且在相应的传输控制数组中初始化相关参数 
+            //5.向客户端发送该传输在控制数组中下标
+            if(recv_fil_info(send_arg->ep,send_arg->event->data.fd)==false)
+            {
+                printf("recv_fil_info failed\n");
+                exit(-1);
+            }
+
+
+            //接收完成一次就要
+            //关闭套接字以及该次传输的注册事件删除
+
+            break;
+
+        case type_fildata:
+            //1.接受文件数据部分
+            //将数据部门映射到对应的内存中
+
+
+            //接收完成一次就要将该次传输的注册事件删除
+            break;
+        default:
+            printf("erro: unkown type\n");
+            return ;
     }
-    memcpy(fil,recv_buf,fil_info_size);
-    printf("接收完毕\n");
-    //打印一下
-    printf("filname = %s , filsize = %d\n",fil->filname,fil->size);
-    free(fil);
+
     
 }
 
@@ -75,6 +90,9 @@ EpollTcp::EpollTcp(char *arg):port(arg)
     if(epoll_ctl(efd,EPOLL_CTL_ADD,accept_sock,&event) == -1){printf("epoll_ctl failed\n");exit(-1);}
     events = (struct epoll_event*)malloc(MAXEVENT*sizeof(struct epoll_event));
     memset(events,0,sizeof(events));
+
+    //初始化锁
+    pthread_mutex_init(&trans_set_lock,NULL);
 }
 
 int EpollTcp::create_bind(char* arg)
@@ -130,6 +148,7 @@ int EpollTcp::wait()
 
 int EpollTcp::dealTransaction(int num)
 {
+      
      //有事件发生
         for(int i = 0;i < num ; i++)
         {
@@ -170,43 +189,80 @@ int EpollTcp::registerClient(int clnt_fd)
 int EpollTcp::dealTask(struct epoll_event event)
 {
 
-        struct args* arg = new args();
-        arg->fd = event.data.fd;
+        struct st_args* arg = new st_args();
         arg->event = &event;
+        arg->ep = this;
         thpool.addTask(work,(void*)arg);
-            //客户端发来消息
-            //接收并且发回去
-            //char buf[100];
-            // memset(buf,0,sizeof(buf));
-            // int clnt_fd = event.data.fd;
-            // int n = recv(clnt_fd,buf,100,0);
-            // if(n==-1)
-            // {
-            //         if(errno == EAGAIN || errno == EWOULDBLOCK)
-            //         {
-            //             //读取完毕
-            //             break;
-            //         }
-            //         close(clnt_fd);
-            //         break;
-            // }
-            // else if(n==0)
-            // {
-            //     printf("%ld 断开连接\n",clnt_fd);
-            //     close(clnt_fd);
-            //     break;
-            // }else //将读取到的字符串发送出去
-            // {
-            //       // send(clnt_fd,buf,n,0);
-            //         struct args* arg = new args();
-            //         arg->fd = clnt_fd;
-            //         memcpy( arg->buf,buf,sizeof(buf));
-            //         arg->n = n;
-                  
-            //         thpool.addTask(mySend,(void*)arg);
-            // }
-
 
     return 0;
 }
 
+bool EpollTcp::recv_fil_info(EpollTcp* ep , int sockfd)
+{
+    struct st_conn* conn = (struct st_conn*)malloc(sizeof(struct st_conn)); 
+    if(conn == nullptr)
+    {
+        perror("recv_fil_info :new st_conn failed\n");
+        exit(-1);
+    }
+    memset(conn,0,sizeof(struct st_conn));
+
+    struct st_filInfo *filInfo  =(struct st_filInfo*)malloc(fil_info_size);
+    if(filInfo == nullptr)
+    {
+        printf("malloc filInfo failed\n");
+        exit(-1);
+    }
+    memset(filInfo,0,fil_info_size);
+
+    char recv_buf[fil_info_size];
+
+    memset(recv_buf,0,fil_info_size);
+    if(recv_data(sockfd,recv_buf,fil_info_size)!=fil_info_size)
+    {
+        printf("need %d bytes , recv faild\n",fil_info_size);
+        exit(-1);
+    }
+    
+    memcpy(filInfo,recv_buf,fil_info_size);
+    printf("filname =%s , filsize = %d\n",filInfo->filname,filInfo->size);
+    
+    pthread_mutex_lock(&ep->trans_set_lock);
+    ep->trans_set.push_back(conn);
+    pthread_mutex_unlock(&ep->trans_set_lock);
+
+    //在服务端创建相应的文件
+    char filpath[FILNAMESIZE+loadFolder.size()];
+    memset(filpath,0,sizeof(filpath));
+    memcpy(filpath,loadFolder.c_str(),loadFolder.size());
+    memcpy(filpath+loadFolder.size(),filInfo->filname,FILNAMESIZE);
+    creat_fil(filpath,filInfo->size);
+
+
+
+    free(filInfo);
+
+}
+
+int EpollTcp::recv_data(int sockfd ,void*  recv_mem,int recv_size)
+{
+    int total_recv = 0;
+    int left_recv  = recv_size;
+    while(total_recv!= recv_size)
+    {
+        int n  = recv(sockfd,recv_mem ,left_recv,0);
+        if(n == -1)
+        {
+            perror("recv_data failed\n");
+            exit(-1);
+        }
+        if(n == 0 )
+        {
+            printf("in recv_date client disconnect \n");
+            exit(-1);
+        }
+        total_recv += n;
+        left_recv  = recv_size - total_recv ;
+    }
+    return total_recv;
+}

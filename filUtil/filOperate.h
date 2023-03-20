@@ -37,22 +37,16 @@ struct st_head
 };
 
 
-//本次传输相关的一些数据
-//比如文件映射的指针位置 、要接收多少块数据、已经接受了多少块数据
-struct conn
-{
-    char filname[FILNAMESIZE]; //文件名
-    char* p_fil; // 映射在内存的文件指针
-    int rev_count; //已经接收的分块
-    int need_count; //总的需要接收的分块的数量
-    int block_size; //分块发送的大小
-    int fil_size; //文件大小
-};
+
 
 
 
 //filname:文件名字
 bool creat_fil(struct st_filInfo* filInfo);
+
+//filname:文件名字
+//size: 文件大小
+bool creat_fil(const char* filname ,const int filsize );
 
 //第一次建立连接需要接受的信息
 bool recvFilinfo(int sockfd , struct filInfo* st_filInfo);

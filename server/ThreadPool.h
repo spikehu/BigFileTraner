@@ -16,9 +16,6 @@ using callback = void(*)(void*);
 
 struct args
 {
-    int fd;
-    char* buf[100];
-    int n ; 
     struct epoll_event* event; 
 };
 

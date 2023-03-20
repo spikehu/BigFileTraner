@@ -3,7 +3,7 @@
 //filname:文件名字
 bool  creat_fil(struct st_filInfo* filInfo)
 {
-    int fd = open(filInfo->filname,O_CREAT|O_RDWR);
+    int fd = open(filInfo->filname,O_CREAT|O_RDWR); 
     if(fd ==-1)
     {
         printf("creat_fil failed\n");
@@ -14,6 +14,24 @@ bool  creat_fil(struct st_filInfo* filInfo)
     write(fd,"",1);
     close(fd);
     return true;
+}
+
+
+//filname:文件名字
+//size: 文件大小
+bool creat_fil(const char* filname ,const int filsize )
+{
+    int fd = open(filname,O_CREAT|O_RDWR); 
+    if(fd ==-1)
+    {
+        printf("creat_fil failed\n");
+        return FILNAMESIZE;
+    }
+    //将文件变大
+    lseek(fd,filsize-1, SEEK_END);
+    write(fd,"",1);
+    close(fd);
+    return true;    
 }
 
 //第一次建立连接需要接受的信息

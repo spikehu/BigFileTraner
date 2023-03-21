@@ -47,12 +47,19 @@ void EpollTcp::work(void* arg)
             //3.将创建的文件映射到内存中
             //4.并且在相应的传输控制数组中初始化相关参数 
             //5.向客户端发送该传输在控制数组中下标
-            if(recv_fil_info(send_arg->ep,send_arg->event->data.fd)==false)
+            int index = recv_fil_info(send_arg->ep,send_arg->event->data.fd)
+            if(index==-1)
             {
                 printf("recv_fil_info failed\n");
                 exit(-1);
             }
-
+            
+            //向客户端发送该传输在控制数组中下标
+            if(sendData(send_arg->event->data.fd,&index,sizeof(index))==false)
+            {
+                printf("index send failed\n");
+                exit(-1);
+            }
 
             //接收完成一次就要
             //关闭套接字以及该次传输的注册事件删除
@@ -197,8 +204,9 @@ int EpollTcp::dealTask(struct epoll_event event)
     return 0;
 }
 
-bool EpollTcp::recv_fil_info(EpollTcp* ep , int sockfd)
+int EpollTcp::recv_fil_info(EpollTcp* ep , int sockfd)
 {
+    int set_index = -1;
     struct st_conn* conn = (struct st_conn*)malloc(sizeof(struct st_conn)); 
     if(conn == nullptr)
     {
@@ -226,14 +234,14 @@ bool EpollTcp::recv_fil_info(EpollTcp* ep , int sockfd)
     
     memcpy(filInfo,recv_buf,fil_info_size);
     printf("filname =%s , filsize = %d\n",filInfo->filname,filInfo->size);
-    
-    pthread_mutex_lock(&ep->trans_set_lock);
+
     ep->trans_set.push_back(conn);
     
+    pthread_mutex_lock(&trans_set_lock);
     //本次文件传输的控制块的在trans_Set的下标
-    int set_index = ep->trans_set.size() -1; 
+    set_index = ep->trans_set.size() -1; 
+    pthread_mutex_unlock(&trans_set_lock);
     
-    pthread_mutex_unlock(&ep->trans_set_lock);
 
     //在服务端创建相应的文件
     char filpath[FILNAMESIZE+loadFolder.size()];
@@ -250,7 +258,7 @@ bool EpollTcp::recv_fil_info(EpollTcp* ep , int sockfd)
     }
 
     free(filInfo);
-    return true;
+    return set_index;
 }
 
 int EpollTcp::recv_data(int sockfd ,void*  recv_mem,int recv_size)
@@ -300,14 +308,33 @@ bool EpollTcp::initStConn( struct st_conn* conn,const char* filpath ,const int f
     {
         conn->need_count  += 1;
     }
+    return true;
+}
 
-    //打印一下
-    printf("filname = %s\n",conn->filname);
-    printf("filsize = %d \n",conn->fil_size);
-    printf("recv_count = %d\n",conn->recv_count);
-    printf("block size = %d\n",conn->block_size);
-    printf("need count = %d \n",conn->need_count);
+//将数据发送给对端
+//sockfd:套接字
+//data :待发送的数据
+//size: 数据字节大小
+bool EpollTcp::sendData(int sockfd , const void* data ,int data_size )
+{
+        int send_size = data_size;
+        char* send_buf = (char*)malloc(sizeof(int)+data_size);
+        memset(send_buf,0,sizeof(send_buf));
 
+        memcpy(send_buf,&send_size,sizeof(send_size));
+        memcpy(send_buf+sizeof(send_size) , data , data_size);
 
+        int need_send  = data_size + sizeof(int);
+        int sent_bytes = 0 ;
+        while(need_send!=0)
+        {
+            sent_bytes = send(sockfd , send_buf ,need_send , 0);
+            if(sent_bytes == -1)
+            {
+                perror("send failed\n");
+                return false;
+            }
+            need_send -= sent_bytes;
+        }
     return true;
 }

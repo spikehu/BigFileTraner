@@ -66,6 +66,7 @@ public:
     static bool recv_fil_info(EpollTcp* ep,int sockfd);
     static int recv_data( int sockfd,void*  recv_mem,int recv_size);
     static bool initStConn( struct st_conn* conn,const char* filpath ,const int filsize);
+    static bool sendData(int sockfd , const void* data ,int size );
 
 private:
     int create_bind(char* arg);

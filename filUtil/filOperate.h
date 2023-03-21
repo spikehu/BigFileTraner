@@ -16,7 +16,7 @@
 #include <sys/stat.h>
 
 #define FILNAMESIZE 100 //文件名最大长度
-#define SEND_RECV_SIZE 65536 //每次接收和发送的字节数量 64k
+#define SEND_RECV_SIZE 65536 //每次接收和发送的字节数量 64k 小于接收缓冲区的大小
 #define BLOCKSIZE 536870912 //对文件的分块大小 这是512M 客户端进行划分
 #define INTSIZE 4
 #define type_filinfo -1  //发送文件信息前先发送-1表示传输的是文件信息
@@ -64,6 +64,7 @@ struct st_filInfo* initFileInfo(const char* filName );
 //filInfo：包含文件信息的结构体
 char* myMmap(struct st_filInfo* filInfo);
 
+char* myMmap(const char* filname , const int size);
 
 
 #endif

@@ -89,3 +89,23 @@ char* myMmap(struct st_filInfo* filInfo)
     close(fd);
     return p;
 }
+char* myMmap(const char* filname , const int size)
+{
+     //打开文件
+    int fd = open(filname,O_RDWR);
+    if(fd == -1)
+    {
+        perror(filname);
+        return NULL;
+    }
+
+    char* p = (char*)mmap(NULL,size,PROT_READ|PROT_WRITE,MAP_SHARED,fd,0);
+    if(p == MAP_FAILED)
+    {
+        printf("mmap failed\n");
+        close(fd);
+        return NULL;
+    }
+    close(fd);
+    return p;
+}

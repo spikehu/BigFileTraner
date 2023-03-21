@@ -14,10 +14,6 @@ using namespace std;
 using callback = void(*)(void*);
 
 
-struct args
-{
-    struct epoll_event* event; 
-};
 
 template <typename T>
 class Task

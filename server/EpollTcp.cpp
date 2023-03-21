@@ -229,6 +229,10 @@ bool EpollTcp::recv_fil_info(EpollTcp* ep , int sockfd)
     
     pthread_mutex_lock(&ep->trans_set_lock);
     ep->trans_set.push_back(conn);
+    
+    //本次文件传输的控制块的在trans_Set的下标
+    int set_index = ep->trans_set.size() -1; 
+    
     pthread_mutex_unlock(&ep->trans_set_lock);
 
     //在服务端创建相应的文件
@@ -238,10 +242,15 @@ bool EpollTcp::recv_fil_info(EpollTcp* ep , int sockfd)
     memcpy(filpath+loadFolder.size(),filInfo->filname,FILNAMESIZE);
     creat_fil(filpath,filInfo->size);
 
-
+    //初始化conn
+    if(initStConn(conn, filpath ,filInfo->size) == false)
+    {
+        printf("initStConn failed\n");
+        exit(-1);
+    }
 
     free(filInfo);
-
+    return true;
 }
 
 int EpollTcp::recv_data(int sockfd ,void*  recv_mem,int recv_size)
@@ -265,4 +274,40 @@ int EpollTcp::recv_data(int sockfd ,void*  recv_mem,int recv_size)
         left_recv  = recv_size - total_recv ;
     }
     return total_recv;
+}
+
+//初始化struct st_conn
+//filpath:文件
+//filsize : 文件大小
+bool EpollTcp::initStConn( struct st_conn* conn,const char* filpath ,const int filsize)
+{
+    memcpy(conn->filname , filpath , strlen(filpath));
+    
+    if(strcmp(conn->filname , filpath)!=0)
+    {
+        printf("initStConn :: memcpy failed\n");
+        return false;
+    }
+    //conn->filfd = open(conn->filname ,O_RDWR);
+    //if(conn->filfd == -1){printf("initStConn : open() failed\n");exit(-1);}
+    conn->fil_size = filsize;
+    conn->recv_count = 0;
+    conn->p_fil  = myMmap(filpath,filsize);
+    conn->block_size = BLOCKSIZE;
+
+    conn->need_count = (conn->fil_size / conn->block_size);
+    if( (conn->fil_size % conn->block_size) != 0 )
+    {
+        conn->need_count  += 1;
+    }
+
+    //打印一下
+    printf("filname = %s\n",conn->filname);
+    printf("filsize = %d \n",conn->fil_size);
+    printf("recv_count = %d\n",conn->recv_count);
+    printf("block size = %d\n",conn->block_size);
+    printf("need count = %d \n",conn->need_count);
+
+
+    return true;
 }

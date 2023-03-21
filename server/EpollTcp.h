@@ -30,11 +30,11 @@ using namespace std;
 struct st_conn
 {
     char filname[FILNAMESIZE]; //文件名
-    int  filfd; //文件描述符
+    //int  filfd; //文件描述符 暂时不需要
     char* p_fil; // 映射在内存的文件指针
-    int rev_count; //已经接收的分块数量
+    int recv_count; //已经接收的分块数量
     int need_count; //总的需要接收的分块的数量
-    int block_size; //分块发送的大小
+    int block_size; //一个分块发送的大小
     int fil_size; //文件大小
 };
 
@@ -65,6 +65,7 @@ public:
     static void  work(void* arg);
     static bool recv_fil_info(EpollTcp* ep,int sockfd);
     static int recv_data( int sockfd,void*  recv_mem,int recv_size);
+    static bool initStConn( struct st_conn* conn,const char* filpath ,const int filsize);
 
 private:
     int create_bind(char* arg);

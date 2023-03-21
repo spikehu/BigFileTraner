@@ -39,8 +39,9 @@ int main(int argc, char* argv[])
         printf("connect failed\n");
         return -1;
     }
-    
+
     //多线程发送文件内容
+    
 
     return 0;
 }

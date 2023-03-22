@@ -2,7 +2,6 @@
 #pragma once 
 #ifndef _EPOLLTCP_H_
 #define _EPOLLTCP_H_
-
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <string.h>
@@ -64,7 +63,7 @@ public:
     int wait();
     static void  work(void* arg);
     static int recv_fil_info(EpollTcp* ep,int sockfd);
-    static int recv_data( int sockfd,void*  recv_mem,int recv_size);
+    static int recv_data( int sockfd , void* recv_mem,int recv_size);
     static bool initStConn( struct st_conn* conn,const char* filpath ,const int filsize);
     static bool sendData(int sockfd , const void* data ,int size );
     static void delEpollEvent(EpollTcp* ep,struct epoll_event* event);

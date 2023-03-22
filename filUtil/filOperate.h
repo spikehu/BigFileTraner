@@ -16,12 +16,21 @@
 #include <sys/stat.h>
 
 #define FILNAMESIZE 100 //文件名最大长度
-#define SEND_RECV_SIZE 65536 //每次接收和发送的字节数量 64k 小于接收缓冲区的大小
+#define SEND_RECV_SIZE 7 //每次接收和发送的字节数量 64k 小于接收缓冲区的大小
 #define BLOCKSIZE 536870912 //对文件的分块大小 这是512M 客户端进行划分
+
+
 #define INTSIZE 4
 #define type_filinfo -1  //发送文件信息前先发送-1表示传输的是文件信息
 #define type_fildata  1  //发送文件内容前发送1 表示传输的是数据
 
+struct st_head
+{
+    int id ; //自己所属于的文件
+    int offset ;//偏移量
+    int size ; //这次传输数据块的大小
+    st_head():id(-1),offset(0),size(0){}
+};
 
 struct st_filInfo
 {

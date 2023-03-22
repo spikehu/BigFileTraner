@@ -1,6 +1,12 @@
 
-#include "EpollTcp.h"
+#include "./EpollTcp.h"
 #include "ThreadPool.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <pthread.h>
+#include <sys/mman.h>
+#include <unistd.h>
 using namespace std;
 
 string loadFolder = "upload/";
@@ -15,12 +21,20 @@ void EpollTcp::work(void* arg)
     //将前4个字节取出 表示后面数据的长度
 
     char size[INTSIZE]; // 数据部分有多少个字节
+    // int i = 0;
+    // while(i!=INTSIZE)
+    // {
+    //     int n = recv(send_arg->event->data.fd,size+i,1,0);
+    //     if(n==1)i++;
+    // }
     for(int i =0;i<INTSIZE;i++)
     {
         int n = recv(send_arg->event->data.fd,size+i,1,0);
         if(n==-1)
         {
-            printf("work:: recv failed\n");exit(-1);
+            //printf("work:: recv failed\n");exit(-1);
+             close(send_arg->event->data.fd);
+             pthread_exit(0);
         }
         else if(n==0)
         {
@@ -30,13 +44,21 @@ void EpollTcp::work(void* arg)
     }
 
     char  recv_type[INTSIZE]; //接收的类型是文件信息 还是文件数据
+    // i=0;
+    // while(i!=INTSIZE)
+    // {
+    //     int n = recv(send_arg->event->data.fd,recv_type+i,1,0);
+    //     if(n==1)i++;
+    // }
     for(int i =0 ;i < INTSIZE ;i++)
     {
         int recv_ret = recv(send_arg->event->data.fd,recv_type+i,1,0);
         if(recv_ret==-1)
         {
             printf("work recv failed\n");
-            exit(-1);
+            close(send_arg->event->data.fd);
+            pthread_exit(0);
+           // exit(-1);
         }else if(recv_ret ==0)
         {
             printf("client disconnect\n");
@@ -44,12 +66,14 @@ void EpollTcp::work(void* arg)
         }
     }
     
-    printf("要有%d个字节传来\n",*(int*)size);
     int recv_size = *(int*)size;
     int type = -2 ;
     memcpy(&type,recv_type,INTSIZE);
-    printf("type == %d\n",type);
+    // printf("type == %d\n",type);
     int index = 0;
+    struct st_head* fil_head = nullptr;
+    char* fil_recv = (char*)malloc(SEND_RECV_SIZE);
+    struct st_conn* conn = nullptr;
 
     //根据类型决定是接收文件数据 还是接受文件信息
     switch(type)
@@ -76,22 +100,70 @@ void EpollTcp::work(void* arg)
 
             //接收完成一次就要
             //关闭套接字以及该次传输的注册事件删除
-            delEpollEvent(send_arg->ep,send_arg->event);
-
             break;
 
         case type_fildata:
+               // printf("开始接收文件数据\n");
             //1.接受文件数据部分
             //将数据部门映射到对应的内存中
 
+            //先读取头部
+             fil_head = new  st_head();
+             if(fil_head == nullptr)
+             {
+                printf("new st_head failed\n");
+                exit(-1);
+             }
 
+            if(recv_data(send_arg->event->data.fd,fil_head,sizeof(struct st_head))!=sizeof(struct st_head))
+            {
+                printf("recv file data faield.\n");
+                exit(-1);
+            }
+
+            //打印一下文件头部信息
+            // printf("st_head: id = %d\n",fil_head->id);
+            // printf("st_head: offset = %d\n",fil_head->offset);
+            // printf("st_head: size = %d\n",fil_head->size);
+
+            //接收文件内容
+            if(recv_data(send_arg->event->data.fd,fil_recv,fil_head->size) != fil_head->size)
+            {
+                printf("receive file failed\n");
+                exit(-1);
+            }
+
+            // 映射到对应的内存中
+            conn = send_arg->ep->trans_set[fil_head->id];
+            memcpy(conn->p_fil+fil_head->offset,fil_recv,fil_head->size);
+            
+            //拷贝完成 收到的块数加1
+            pthread_mutex_lock(&send_arg->ep->trans_set_lock);
+            printf("lock\n");
+            conn->recv_count+=1;
+            pthread_mutex_unlock(&send_arg->ep->trans_set_lock);
+            printf("unlock\n");
+            printf("conn->recv_count = %d\n",conn->recv_count);
+            if(conn->recv_count == conn->need_count)
+            {
+                printf("接受完毕\n");
+                //取消映射 并从vector中删除该conn
+                munmap(conn->p_fil,conn->fil_size);
+                send_arg->ep->trans_set.erase(send_arg->ep->trans_set.begin()+fil_head->id);
+                free(conn);
+            }
             //接收完成一次就要将该次传输的注册事件删除
             break;
         default:
             printf("erro: unkown type\n");
-            return ;
+            break; ;
     }
-
+    //通知客户端断开这次连接
+   // printf("通知断开\n");
+    close(send_arg->event->data.fd);
+    delEpollEvent(send_arg->ep,send_arg->event);
+    free(fil_recv);
+    free(fil_head);
     
 }
 
@@ -186,7 +258,6 @@ int EpollTcp::dealTransaction(int num)
                     }
                 }else //客户端发来数据
                 {
-                    printf("dealTask %d \n",num);
                     //将任务加入工作队列
                     dealTask(events[i]);
                 }
@@ -198,7 +269,7 @@ int EpollTcp::registerClient(int clnt_fd)
 {
     set_fd_noblock(clnt_fd); // 设置为非阻塞
 
-    printf("客户端%ld接入\n",clnt_fd);
+    // printf("客户端%ld接入\n",clnt_fd);
     if(clnt_fd == -1 ){printf("accept failed\n");return -1;}
     //进行注册
     event.data.fd = clnt_fd;
@@ -315,13 +386,14 @@ bool EpollTcp::initStConn( struct st_conn* conn,const char* filpath ,const int f
     conn->fil_size = filsize;
     conn->recv_count = 0;
     conn->p_fil  = myMmap(filpath,filsize);
-    conn->block_size = BLOCKSIZE;
+    conn->block_size = SEND_RECV_SIZE;
 
     conn->need_count = (conn->fil_size / conn->block_size);
     if( (conn->fil_size % conn->block_size) != 0 )
     {
         conn->need_count  += 1;
     }
+    printf("conn->need_count = %d\n",conn->need_count);
     return true;
 }
 

@@ -1,6 +1,6 @@
-all:test
-test: test.cpp
-	g++ -o test test.cpp -I./ filOperate.cpp 
+all:crtFile
+crtFile: crtFile.cpp
+	g++ -o crtFile crtFile.cpp -I./ filOperate.cpp 
 
 clean:
-	rm -f test 
+	rm -f crtFile 

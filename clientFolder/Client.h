@@ -15,15 +15,9 @@
 #define POOLMIN 5 
 #define POOLMAX 10
 
-const int MAXSEND = SEND_RECV_SIZE+1000;
+const int MAXSEND = SEND_RECV_SIZE+100;
 
 
-struct st_head
-{
-    int id ; //自己所属于的文件
-    int offset ;//偏移量
-    int size ; //这次传输数据块的大小
-};
 
 //传给客户端发送数据的线程 函数的参数结构体
 struct st_cl_sendData_Args
@@ -86,5 +80,6 @@ struct  st_thread_send_arg
     int send_size;
     char send_buf[MAXSEND];
     Client** clt;
+   
 };
 #endif

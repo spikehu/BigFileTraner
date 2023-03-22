@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <sys/socket.h>
 
 Client::Client(char* ip , char* port ,char* fil) //需要传入ip地址 端口号 文件名
 {
@@ -26,6 +27,7 @@ Client::Client(char* ip , char* port ,char* fil) //需要传入ip地址 端口�
 }
 Client::~Client()
 {
+    while(1){};
     // free(mapMem_p) ; 这里不能释放 会出现segment default的bug
     //取消文件映射
     munmap(mapMem_p,filInfo->size);
@@ -55,12 +57,13 @@ int Client::connectServer()
     return sockfd;
 }
 
-//发送文件数据
+//发送数据
 //buf:数据
 //send_size：数据大小
 //closeFd : 发送完了是否等待服务端发来的消息，true为发送完立刻退出 否则等待
 int Client::sendData(const void* buf ,  int send_size,bool waitServer)
 {
+        printf("sendData start\n");
         char* sendBuf = (char*)malloc(send_size+INTSIZE);
         memset(sendBuf,0,sizeof(sendBuf+INTSIZE));
 
@@ -121,7 +124,17 @@ int Client::sendData(const void* buf ,  int send_size,bool waitServer)
         }
 
         delete int_size;
-        close(data_send_fd);
+        
+        //等待服务端通知该次传输的断开
+        char watiBuf[1];
+        int notify = -1;
+        printf("send bytes %d\n",totalSend);
+        while(notify!=0)
+        {
+            notify = recv(data_send_fd, watiBuf,1, 0);
+        }
+
+        printf("得到断开通知，断开\n");
         return totalSend;
 }
 
@@ -151,20 +164,22 @@ bool Client::sendFile()
     int block_cnt = fil_size / BLOCKSIZE;
     
     //先传输前block_cnt块
-    //每一次开一个线程进行传输
+    //每一次交给一个线程进行传输
     for(int i = 0 ; i < block_cnt ; i++)
     {
         char* block_start = mapMem_p + i*block_cnt;
-        
+        sendBlcok(block_start, BLOCKSIZE, i*block_cnt);
     }
-
-
 
     //如果fil_size / BLOCKSIZE不是整数 还要再传输剩余的一块
     if(fil_size % BLOCKSIZE != 0)
     {
-
+        printf("send filedata\n");
+        char* block_start = mapMem_p + (block_cnt)*BLOCKSIZE;
+        printf("fil_size % BLOCKSIZE = %d\n",(fil_size % BLOCKSIZE));
+        sendBlcok(block_start, (fil_size % BLOCKSIZE), block_cnt*BLOCKSIZE);
     }
+    return true;
 
 }
 
@@ -209,10 +224,10 @@ bool Client::sendBlcok(const char* send_start ,const int send_size,const int off
         struct st_thread_send_arg* arg = (struct st_thread_send_arg*)malloc(sizeof(struct st_thread_send_arg));
         memcpy(arg->send_buf, send_buf,sizeof(struct st_head)+SEND_RECV_SIZE+INTSIZE);
         arg->send_size = SEND_RECV_SIZE+sizeof(struct st_head)+INTSIZE;
+        arg->clt = (Client**)malloc(sizeof(Client*));
         *(arg->clt)  = this;
         //交给线程池发送
         thpool.addTask(threadSend,arg);
-
         // sendData(send_buf,SEND_RECV_SIZE+sizeof(struct st_head));
     }
 
@@ -221,30 +236,37 @@ bool Client::sendBlcok(const char* send_start ,const int send_size,const int off
     */
     if(send_size % SEND_RECV_SIZE !=0)
     {
+        
+
         int left_send = send_size % SEND_RECV_SIZE;
-        char* left_send_buf = (char*)malloc(sizeof(struct st_head)+left_send);
+        char* left_send_buf = (char*)malloc(sizeof(struct st_head)+left_send+INTSIZE);
         if(left_send_buf == nullptr)
         {
             perror("left_send_buf malloc failed\n");
             exit(-1);
         }
 
-        memset(left_send_buf, 0, sizeof(struct st_head)+SEND_RECV_SIZE);
+        memset(left_send_buf, 0, sizeof(struct st_head)+left_send+INTSIZE);
 
         //初始化头部信息
         head->id = send_id;
-        head->offset = offset + (send_cnt-1)*SEND_RECV_SIZE;
+        head->offset = offset + (send_cnt)*SEND_RECV_SIZE;
         head->size = left_send;
 
         memcpy(left_send_buf, &send_type, INTSIZE);
         //拷贝头部
         memcpy(left_send_buf+INTSIZE, head, sizeof(struct st_head));
         //拷贝数据
-        memcpy(left_send_buf+sizeof(struct st_head)+INTSIZE,send_start+(send_cnt-1)*SEND_RECV_SIZE,SEND_RECV_SIZE);
+        memcpy(left_send_buf+sizeof(struct st_head)+INTSIZE,send_start+(send_cnt)*SEND_RECV_SIZE,left_send);
+
 
         struct st_thread_send_arg* arg = (struct st_thread_send_arg*)malloc(sizeof(struct st_thread_send_arg));
+        memset(arg->send_buf, 0, MAXSEND);
+
         memcpy(arg->send_buf, left_send_buf,sizeof(struct st_head)+left_send+INTSIZE);
+
         arg->send_size = left_send+sizeof(struct st_head)+INTSIZE;
+        arg->clt = (Client**)malloc(sizeof(Client*));
         *(arg->clt)  = this;
         //交给线程池发送
         thpool.addTask(threadSend,arg);

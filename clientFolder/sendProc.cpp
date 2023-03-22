@@ -9,5 +9,8 @@ int main(int argc ,char* argv[])
     }
     Client client(argv[1],argv[2],argv[3]);
 
+    //开始发送文件内容
+    client.sendFile();
+
     return 0;
 }

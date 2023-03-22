@@ -8,12 +8,22 @@
 
 #include "ThreadPool.h"
 #include "ThreadPool.cpp"
-#include "filOperate.h"
+#include "../filUtil/filOperate.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
 #define POOLMIN 5 
 #define POOLMAX 10
+
+const int MAXSEND = SEND_RECV_SIZE+1000;
+
+
+struct st_head
+{
+    int id ; //自己所属于的文件
+    int offset ;//偏移量
+    int size ; //这次传输数据块的大小
+};
 
 //传给客户端发送数据的线程 函数的参数结构体
 struct st_cl_sendData_Args
@@ -35,6 +45,9 @@ union clnt_send_args
 };
 
 
+
+
+
 class Client
 {
 public:
@@ -42,7 +55,7 @@ public:
     Client(char* ip , char* port ,char* fil); //需要传入ip地址 端口号 文件名
     bool sendFile(const char* filname);//文件发送函数
    ~Client();
-
+    bool sendFile();
 public:
 
     struct sockaddr_in serv_addr;
@@ -56,13 +69,22 @@ private:
     
 private:
     
-    static void* sendFileBlock(void* args,int size); //发送文件数据块
+    void* sendFileBlock(const void* buf,const int size); //发送文件数据块
     bool  sendFilInfo(struct filInfo* filInfo);//发送文件信息
-    int sendData(void* buf , int send_size);//发送文件数据
-    void initServAddr(char* ip ,char* port);//初始化地址
+    void initServAddr(const char* ip ,const char* port);//初始化地址
     int connectServer(); //连接到服务器
-    int sendFileInfo(struct st_filInfo* filInfo);
+    int sendFileInfo(const struct st_filInfo* filInfo);
+    int sendData(const void* buf , int send_size,bool waitServer=false);
+   
+    bool sendBlcok(const char* send_start ,const int send_size,const int offset);//发送一个文件数据块
+    static void threadSend(void* arg);
+
 };
 
+struct  st_thread_send_arg
+{
+    int send_size;
+    char send_buf[MAXSEND];
+    Client** clt;
+};
 #endif
-

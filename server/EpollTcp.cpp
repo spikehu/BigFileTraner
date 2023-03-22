@@ -18,16 +18,29 @@ void EpollTcp::work(void* arg)
     for(int i =0;i<INTSIZE;i++)
     {
         int n = recv(send_arg->event->data.fd,size+i,1,0);
-        if(n==-1){printf("work:: recv failed\n");exit(-1);}
+        if(n==-1)
+        {
+            printf("work:: recv failed\n");exit(-1);
+        }
+        else if(n==0)
+        {
+             printf("client disconnect\n");
+             return ;
+        }
     }
 
     char  recv_type[INTSIZE]; //接收的类型是文件信息 还是文件数据
     for(int i =0 ;i < INTSIZE ;i++)
     {
-        if(recv(send_arg->event->data.fd,recv_type+i,1,0)!=1)
+        int recv_ret = recv(send_arg->event->data.fd,recv_type+i,1,0);
+        if(recv_ret==-1)
         {
             printf("work recv failed\n");
             exit(-1);
+        }else if(recv_ret ==0)
+        {
+            printf("client disconnect\n");
+            return ;
         }
     }
     
@@ -36,7 +49,7 @@ void EpollTcp::work(void* arg)
     int type = -2 ;
     memcpy(&type,recv_type,INTSIZE);
     printf("type == %d\n",type);
-
+    int index = 0;
 
     //根据类型决定是接收文件数据 还是接受文件信息
     switch(type)
@@ -47,7 +60,7 @@ void EpollTcp::work(void* arg)
             //3.将创建的文件映射到内存中
             //4.并且在相应的传输控制数组中初始化相关参数 
             //5.向客户端发送该传输在控制数组中下标
-            int index = recv_fil_info(send_arg->ep,send_arg->event->data.fd)
+            index = recv_fil_info(send_arg->ep,send_arg->event->data.fd);
             if(index==-1)
             {
                 printf("recv_fil_info failed\n");
@@ -63,6 +76,7 @@ void EpollTcp::work(void* arg)
 
             //接收完成一次就要
             //关闭套接字以及该次传输的注册事件删除
+            delEpollEvent(send_arg->ep,send_arg->event);
 
             break;
 
@@ -156,7 +170,7 @@ int EpollTcp::wait()
 int EpollTcp::dealTransaction(int num)
 {
       
-     //有事件发生
+        //有事件发生
         for(int i = 0;i < num ; i++)
         {
             if(events[i].events & EPOLLIN) 
@@ -237,10 +251,10 @@ int EpollTcp::recv_fil_info(EpollTcp* ep , int sockfd)
 
     ep->trans_set.push_back(conn);
     
-    pthread_mutex_lock(&trans_set_lock);
+    pthread_mutex_lock(&(ep->trans_set_lock));
     //本次文件传输的控制块的在trans_Set的下标
     set_index = ep->trans_set.size() -1; 
-    pthread_mutex_unlock(&trans_set_lock);
+    pthread_mutex_unlock(&(ep->trans_set_lock));
     
 
     //在服务端创建相应的文件
@@ -337,4 +351,11 @@ bool EpollTcp::sendData(int sockfd , const void* data ,int data_size )
             need_send -= sent_bytes;
         }
     return true;
+}
+
+//当一个TCP连接断开时 关闭套接字 将事件从epoll中删除
+void EpollTcp::delEpollEvent(EpollTcp* ep,struct epoll_event* event)
+{
+    epoll_ctl(ep->efd,EPOLL_CTL_DEL,event->data.fd,event);
+    close(event->data.fd);
 }

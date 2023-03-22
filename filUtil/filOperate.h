@@ -29,17 +29,6 @@ struct st_filInfo
     char filname[FILNAMESIZE];
 };
 
-struct st_head
-{
-    int id ; //自己所属于的文件
-    int offset ;//偏移量
-    int size ; //这次传输数据块的大小
-};
-
-
-
-
-
 
 //filname:文件名字
 bool creat_fil(struct st_filInfo* filInfo);

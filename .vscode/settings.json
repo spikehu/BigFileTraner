@@ -1,0 +1,6 @@
+{
+    "clangd.path": "/opt/clangd_15.0.6/bin/clangd",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/"
+    ]
+}

@@ -1,4 +1,5 @@
 #include "ThreadPool.h"
+#include <cstdio>
 #include <unistd.h>
 #include <iostream>
 #include <string.h>
@@ -138,7 +139,6 @@ void ThreadPool<T>:: addTask(callback f ,void* arg)
     Taskptr<T> tsk(new Task<T>(f , arg));
     taskQ.push(tsk);
     pthread_mutex_unlock(&m_taskQ);
-   
     //唤醒等待工作的线程
     pthread_cond_signal(&notEmpty);
 
@@ -178,7 +178,7 @@ void* ThreadPool<T>:: worker(void* arg)
                 pthread_mutex_unlock(&pool->poolMutex);
             }
         }
-
+       
         //如果线程池关闭了 就结束线程
         if(pool->isShutDown)
         {
@@ -189,6 +189,7 @@ void* ThreadPool<T>:: worker(void* arg)
         //取出一个任务进行执行
         Taskptr<T> task = pool->taskQ.front();
         pool->taskQ.pop();
+        
         pthread_mutex_unlock(&pool->m_taskQ);
 
 

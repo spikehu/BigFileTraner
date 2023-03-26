@@ -14,9 +14,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 
 #define FILNAMESIZE 100 //文件名最大长度
-#define SEND_RECV_SIZE 7 //每次接收和发送的字节数量 64k 小于接收缓冲区的大小
+#define SEND_RECV_SIZE 65536 //每次接收和发送的字节数量 64k 小于接收缓冲区的大小
 #define BLOCKSIZE 536870912 //对文件的分块大小 这是512M 客户端进行划分
 
 
@@ -63,6 +64,8 @@ struct st_filInfo* initFileInfo(const char* filName );
 char* myMmap(struct st_filInfo* filInfo);
 
 char* myMmap(const char* filname , const int size);
+
+int recvData(int sockfd , char* buf , int recv_size);
 
 
 #endif

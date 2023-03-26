@@ -6,14 +6,15 @@
 #ifndef _CLIENT_H_
 #define _CLIENT_H_
 
-#include "ThreadPool.h"
-#include "ThreadPool.cpp"
 #include "../filUtil/filOperate.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <vector>
+#include <pthread.h>
+using namespace std;
 
-#define POOLMIN 100
-#define POOLMAX 200
+#define POOLMIN 5 
+#define POOLMAX 10
 
 const int MAXSEND = SEND_RECV_SIZE+100;
 
@@ -24,6 +25,8 @@ struct st_cl_sendData_Args
 {
     char* p ;//映射的起始指针
     struct st_head* head;
+    st_cl_sendData_Args():sockfd(-1){p = nullptr ; head = new st_head();}
+    int sockfd ; 
 };
 
 //传给客户端发送文件信息的线程 函数的参数结构体
@@ -38,10 +41,6 @@ union clnt_send_args
     struct st_cl_sendData_Args* data_args;
 };
 
-
-
-
-
 class Client
 {
 public:
@@ -50,8 +49,6 @@ public:
     bool sendFile(const char* filname);//文件发送函数
    ~Client();
     bool sendFile();
-private:
- ThreadPool<union clnt_send_args> thpool=ThreadPool<union clnt_send_args>(POOLMIN,POOLMAX);
 public:
 
     struct sockaddr_in serv_addr;
@@ -59,18 +56,22 @@ public:
     char* mapMem_p;  //文件被隐射的地址
     struct st_filInfo* filInfo; //包含文件信息的结构体
     int send_id ;//服务端发来表示数据块标识的id
-
+    vector<pthread_t> pids;
+    vector<struct st_cl_sendData_Args*> th_Args;
+ 
 private:
     
+   
     void* sendFileBlock(const void* buf,const int size); //发送文件数据块
     bool  sendFilInfo(struct filInfo* filInfo);//发送文件信息
     void initServAddr(const char* ip ,const char* port);//初始化地址
-    int connectServer(); //连接到服务器
+    int  connectServer(); //连接到服务器
     int sendFileInfo(const struct st_filInfo* filInfo);
     int sendData(const void* buf , int send_size,bool waitServer=false);
-   
     bool sendBlcok(const char* send_start ,const int send_size,const int offset);//发送一个文件数据块
-    static void threadSend(void* arg);
+    static void* threadSend(void* arg);
+    static void sendBlockData(const int sockfd,const char*  p , const int offset ,const int send_size,const int id);
+    static void Csend(const int sockfd,const char* buf  , const int send_size );
 
 };
 

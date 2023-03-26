@@ -11,7 +11,7 @@
 using namespace std;
 //任务类
 
-using callback = void(*)(void*);
+using callback = void*(*)(void*);
 
 
 

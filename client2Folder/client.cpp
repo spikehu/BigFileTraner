@@ -3,11 +3,13 @@
 */
 // #include "../filOperate.h"
 #include "../filUtil/filOperate.h"
-#include "Client.h"
+#include "client.h"
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
+#include <pthread.h>
 #include <sys/socket.h>
 
 Client::Client(char* ip , char* port ,char* fil) //需要传入ip地址 端口号 文件名
@@ -27,6 +29,13 @@ Client::Client(char* ip , char* port ,char* fil) //需要传入ip地址 端口�
 }
 Client::~Client()
 {
+
+    printf("线程个数%d\n",pids.size());
+    for(auto pid :pids)
+    {
+        pthread_join(pid, NULL);
+    }
+    printf("线程个数%d\n",pids.size());
     // free(mapMem_p) ; 这里不能释放 会出现segment default的bug
     //取消文件映射
     munmap(mapMem_p,filInfo->size);
@@ -62,9 +71,10 @@ int Client::connectServer()
 //closeFd : 发送完了是否等待服务端发来的消息，true为发送完立刻退出 否则等待
 int Client::sendData(const void* buf ,  int send_size,bool waitServer)
 {
-        // printf("sendData start\n");
+        printf("sendData start\n");
         printf("---------------开始发送-------------\n");
         char* sendBuf = (char*)malloc(send_size+INTSIZE);
+        if(sendBuf==nullptr){printf("sendData malloc failed\n");exit(-1);}
         int send_size2 = send_size;
 
         memset(sendBuf,0,sizeof(sendBuf+INTSIZE));
@@ -72,7 +82,7 @@ int Client::sendData(const void* buf ,  int send_size,bool waitServer)
         memcpy(sendBuf+INTSIZE,buf,send_size);
 
         int data_send_fd = connectServer();
-
+ 
         send_size += INTSIZE;
         int totalSend  = 0 ;
         int left_send  = send_size; //还需要发送的数据
@@ -151,6 +161,7 @@ int Client::sendData(const void* buf ,  int send_size,bool waitServer)
         close(data_send_fd);
         printf("send bytes %d 得到断开通知，断开\n",totalSend);
         printf("---------------发送结束-------------\n");
+        free(sendBuf);
         return totalSend;
 }
 
@@ -171,13 +182,13 @@ int Client::sendFileInfo(const struct st_filInfo* filInfo)
 
     sendData(sendBytes,sizeof(struct st_filInfo)+INTSIZE,true);
     free(sendBytes);
+    return 0;
 }
 
 
 //发送文件数据
 bool Client::sendFile()
 {
-    
     //先分析要分成个多少个大的数据块进行传输
     int fil_size = filInfo->size;   
     int block_cnt = fil_size / BLOCKSIZE;
@@ -186,83 +197,105 @@ bool Client::sendFile()
     //每一次交给一个线程进行传输
     for(int i = 0 ; i < block_cnt ; i++)
     {
-        char* block_start = mapMem_p + i*BLOCKSIZE;
+        char* block_start = mapMem_p;
         sendBlcok(block_start, BLOCKSIZE, i*BLOCKSIZE);
     }
 
     //如果fil_size / BLOCKSIZE不是整数 还要再传输剩余的一块
     if(fil_size % BLOCKSIZE != 0)
     {
-        printf("send filedata\n");
-        char* block_start = mapMem_p + (block_cnt)*BLOCKSIZE;
-        printf("fil_size % BLOCKSIZE = %d\n",(fil_size % BLOCKSIZE));
+       
+        char* block_start = mapMem_p;
         sendBlcok(block_start, (fil_size % BLOCKSIZE), block_cnt*BLOCKSIZE);
     }
     return true;
 
 }
 
+//将文件数据部分传输给服务器端
+void Client::sendBlockData(const int sockfd,const char*  mp , const int offset ,const int send_size,const int id)
+{
+    struct st_head* head  = new st_head();
+    head->id = id ;
+    head->offset = offset;
+    head->size = send_size;
+
+    int left_send = INTSIZE;
+    
+    int type = type_fildata ; 
+    //先发送后面数据的长度
+    int size = INTSIZE+head->size+INTSIZE;
+    Csend(sockfd, (char*)&size, INTSIZE); 
+   
+     //发送type
+    Csend(sockfd, (char*)&type, INTSIZE);
+    
+    //在发送头部
+    Csend(sockfd, (char*)head,sizeof(struct st_head));
+
+
+    Csend(sockfd, mp, send_size);
+    
+
+    char ret[1];
+    //等待服务端断开连接
+    while(true)
+    {
+        int n = recv(sockfd ,ret  , 1 ,0  );
+        if(n==0)break;
+    }
+    printf("发送完%d , %d 传输断开\n",send_size,sockfd);
+    close(sockfd);
+    delete head;
+}
+
+void Client::Csend(const int sockfd,const char* buf  , const int send_size )
+{
+     //发送数据
+    int total_send = 0;
+    int left_send = send_size;
+    while(total_send!=send_size)
+    {
+        int n = send(sockfd , buf+total_send,left_send,0);
+        if(n==-1)continue;
+        if(n==0)
+        {
+            printf("connection disconnect \n");
+            exit(-1);
+        }
+        total_send+=n;
+        left_send = send_size - total_send;
+        printf("send n = %d this time \n",n);
+    }
+}
+
+
 //发送一个文件数据块
 //需要将文件数据块分成若干更小块进行发送
 bool Client::sendBlcok(const char* send_start ,const int send_size,const int offset)
 {
     int send_cnt = send_size / SEND_RECV_SIZE;
-    int send_type = type_fildata;
-
-    struct st_head* head = (struct st_head*)malloc(sizeof(struct st_head));
-    if(head == nullptr)
-    {
-        perror("head malloc failed\n");
-        exit(-1);
-    }
-
-    char* send_buf = (char*)malloc(SEND_RECV_SIZE+sizeof(struct st_head)+INTSIZE);
-    if(send_buf == nullptr)
-    {
-        perror("send_buf malloc failed\n");
-        exit(-1);
-    }
-    
     for(int i =0; i < send_cnt;i++)
     {
+        //建立与服务端的连接
+        int sockfd = connectServer();
+        if(sockfd == -1){perror("connect failed\n");exit(-1);}
 
-        //交给一个线程进行传输
+        //创建一个线程发送
+        pids.push_back(0);
 
-        memset(send_buf, 0, SEND_RECV_SIZE+sizeof(struct st_head)+INTSIZE);
-        memset(head, 0,sizeof(struct st_head));
-        //初始化头部信息
-        head->id = send_id;
-        head->offset = offset + i*SEND_RECV_SIZE;
-        head->size = SEND_RECV_SIZE;
+        th_Args.push_back(new st_cl_sendData_Args());
+        //初始化head
+        th_Args.back()->head->id = send_id;
+        th_Args.back()->head->offset =  offset + i*SEND_RECV_SIZE;
+        th_Args.back()->head->size = SEND_RECV_SIZE;
+        th_Args.back()->p = mapMem_p;
+        th_Args.back()->sockfd = sockfd;
 
-        memcpy(send_buf, &send_type, INTSIZE);
-        //拷贝头部
-        memcpy(send_buf+INTSIZE, head, sizeof(struct st_head));
-        //拷贝数据
-        memcpy(send_buf+INTSIZE+sizeof(struct st_head),send_start+i*SEND_RECV_SIZE,SEND_RECV_SIZE);
-
-        struct st_thread_send_arg* arg = (struct st_thread_send_arg*)malloc(sizeof(struct st_thread_send_arg));
-        memcpy(arg->send_buf, send_buf,sizeof(struct st_head)+SEND_RECV_SIZE+INTSIZE);
-
-
-        // printf("---------------------------发送前检查一下是否正确-----------------------\n");
-        // //打印一下type 和 头部
-        // printf("send type  = %d \n",*(int*)send_buf);
-        // printf("id = %d , offset = %d , size = %d \n",((struct st_head*)(send_buf+INTSIZE))->id,((struct st_head*)(send_buf+INTSIZE))->offset,((struct st_head*)(send_buf+INTSIZE))->size);
-        // printf("------------------------------打印完成---------------------------------------\n");
-        // printf("开始发送\n");
-
-        arg->send_size = SEND_RECV_SIZE+sizeof(struct st_head)+INTSIZE;
-        arg->clt = (Client**)malloc(sizeof(Client*));
-        *(arg->clt)  = this;
-        arg->id = i;
-        //交给线程池发送
-        if(head->size!=SEND_RECV_SIZE)
-        {
-            printf("发送文件小于SEND_RECV_SIZE");
-        }
-        thpool.addTask(threadSend,arg);
+        printf("交给一个线程%d\n", i);
+        pthread_create(&pids[pids.size()-1], NULL,threadSend , th_Args.back());
         // sendData(send_buf,SEND_RECV_SIZE+sizeof(struct st_head));
+        
     }
 
     /**
@@ -270,52 +303,35 @@ bool Client::sendBlcok(const char* send_start ,const int send_size,const int off
     */
     if(send_size % SEND_RECV_SIZE !=0)
     {
+         //建立与服务端的连接
+        int sockfd = connectServer();
+        if(sockfd == -1){perror("connect failed\n");exit(-1);}
+
         
-        int left_send = send_size % SEND_RECV_SIZE;
-        char* left_send_buf = (char*)malloc(sizeof(struct st_head)+left_send+INTSIZE);
-        if(left_send_buf == nullptr)
-        {
-            perror("left_send_buf malloc failed\n");
-            exit(-1);
-        }
-
-        memset(left_send_buf, 0, sizeof(struct st_head)+left_send+INTSIZE);
-
-        //初始化头部信息
-        head->id = send_id;
-        head->offset = offset + (send_cnt)*SEND_RECV_SIZE;
-        head->size = left_send;
-
-        memcpy(left_send_buf, &send_type, INTSIZE);
-        //拷贝头部
-        memcpy(left_send_buf+INTSIZE, head, sizeof(struct st_head));
-        //拷贝数据
-        memcpy(left_send_buf+sizeof(struct st_head)+INTSIZE,send_start+(send_cnt)*SEND_RECV_SIZE,left_send);
-
-
-        struct st_thread_send_arg* arg = (struct st_thread_send_arg*)malloc(sizeof(struct st_thread_send_arg));
-        memset(arg->send_buf, 0, MAXSEND);
-
-        memcpy(arg->send_buf, left_send_buf,sizeof(struct st_head)+left_send+INTSIZE);
-
-        arg->send_size = left_send+sizeof(struct st_head)+INTSIZE;
-        arg->clt = (Client**)malloc(sizeof(Client*));
-        *(arg->clt)  = this;
-        arg->id = send_cnt;
         //交给线程池发送
-        thpool.addTask(threadSend,arg);
-        free(left_send_buf);
+        // thpool.addTask(threadSend,arg);
+        pids.push_back(0);
+
+        th_Args.push_back(new st_cl_sendData_Args());
+        //初始化head
+        th_Args.back()->head->id = send_id;
+        th_Args.back()->head->offset =  offset + send_cnt*SEND_RECV_SIZE;
+        th_Args.back()->head->size = send_size % SEND_RECV_SIZE;
+        th_Args.back()->p = mapMem_p;
+        th_Args.back()->sockfd = sockfd;
+
+        pthread_create(&pids[pids.size()-1], NULL,threadSend ,th_Args.back());
     }
-    free(head);
-    free(send_buf);
+    //free(send_buf);
     return true;
 }
 
-void Client::threadSend(void* arg)
+void* Client::threadSend(void* arg)
 {
     
-    struct  st_thread_send_arg* send_arg = static_cast<struct  st_thread_send_arg*>(arg);
-    (*send_arg->clt)->sendData(send_arg->send_buf, send_arg->send_size);
-    free(send_arg->clt);
-    free(arg);
+    struct  st_cl_sendData_Args* send_arg = (struct  st_cl_sendData_Args*)(arg);
+    sendBlockData(send_arg->sockfd,send_arg->p,send_arg->head->offset,send_arg->head->size,send_arg->head->id);
+
+
+    return NULL;
 }

@@ -14,14 +14,14 @@
 #include "ThreadPool.h"
 #include "ThreadPool.cpp"
 #include <string>
-#include "filOperate.h"
+#include "../filUtil/filOperate.h"
 
 using namespace std;
 
-#define BACKLOG 20
+#define BACKLOG 300
 #define MAXEVENT 100
-#define POOLMAX  100
-#define POOLMIN  100
+#define POOLMAX  3
+#define POOLMIN  5
 #define MAXTRANS 30
 
 //本次传输相关的一些数据
@@ -45,7 +45,7 @@ public:
 
     int accept_sock;
     struct epoll_event event;
-    struct epoll_event* events;
+    struct epoll_event events[MAXEVENT];
     char* port;  
     int efd; //epoll 句柄
     struct sockaddr_in sockaddr_serv;
@@ -61,8 +61,8 @@ public:
     EpollTcp(char *arg);
     EpollTcp()=delete;
     int wait();
-    static void  work(void* arg);
-    static int recv_fil_info(EpollTcp* ep,int sockfd);
+    static void*  work(void* arg);
+    int recv_fil_info(int sockfd);
     static int recv_data( int sockfd , void* recv_mem,int recv_size);
     static bool initStConn( struct st_conn* conn,const char* filpath ,const int filsize);
     static bool sendData(int sockfd , const void* data ,int size );
@@ -72,7 +72,7 @@ private:
     int create_bind(char* arg);
     int set_fd_noblock(int fd);
     int registerClient(int clnt_fd);//新的客户端接入注册
-    int dealTask(struct epoll_event event);//处理客户端发来的任务
+    int dealTask(struct epoll_event* event);//处理客户端发来的任务
     int dealTransaction(int num);//处理事件
 };
 

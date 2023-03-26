@@ -1,4 +1,8 @@
 #include "filOperate.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <pthread.h>
 
 //filname:文件名字
 bool  creat_fil(struct st_filInfo* filInfo)
@@ -106,6 +110,31 @@ char* myMmap(const char* filname , const int size)
         close(fd);
         return NULL;
     }
+    memset(p,0,size);
     close(fd);
     return p;
+}
+
+
+//向sockf接收buf
+int recvData(int sockfd , char* buf , int recv_size)
+{   
+    memset(buf,0, recv_size);
+    int total_recv = 0; 
+    int left_recv = recv_size;
+    while(total_recv!=recv_size)
+    {
+        int cur_recv = recv(sockfd ,buf+total_recv , left_recv, 0);
+        if(cur_recv==-1)continue;
+        if(cur_recv==0)
+        {
+           perror("传输异常断开\n");
+           exit(-1);
+        }else
+        {
+            total_recv+=cur_recv;
+            left_recv  = recv_size - total_recv;
+        }
+    }
+    return total_recv;
 }

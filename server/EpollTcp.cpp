@@ -28,12 +28,16 @@ void* EpollTcp::work(void* arg)
     char* fil_recv = (char*)malloc(SEND_RECV_SIZE);
     struct st_conn* conn = nullptr;
 
+    char* buf_fil_head = (char*)malloc(sizeof(struct st_head));
+    memset(buf_fil_head, 0, sizeof(struct st_head));
+
     // printf("开始接收文件数据\n");
     //1.接受文件数据部分
     //将数据部门映射到对应的内存中
     //先读取头部
 
-    memset(fil_head, 0, sizeof(fil_head));
+
+
     if(fil_head == nullptr)
     {
         printf("new st_head failed\n");
@@ -41,27 +45,28 @@ void* EpollTcp::work(void* arg)
     }
 
     
-    if(recvData(send_arg->event->data.fd,(char*)fil_head,sizeof(struct st_head))!=sizeof(struct st_head))
+    if(recvData(send_arg->event->data.fd,buf_fil_head,sizeof(struct st_head))!=sizeof(struct st_head))
     {
         printf("recv file data faield.\n");
-        exit(-1);
+        pthread_exit(NULL);
     }
+    memcpy(fil_head , buf_fil_head , sizeof(struct st_head));
 
     printf("头部读取完成 \n");
     printf("读取数据部分\n");
 
-    //打印一下文件头部信息
-    // printf("st_head: id = %d\n",fil_head->id);
-    // printf("st_head: offset = %d\n",fil_head->offset);
-    // printf("st_head: size = %d\n",fil_head->size);
+
+    //打印头部
+    printf("-------------打印头部信息-----");
+    printf("head->size = %d head->offset = %d  head->id = %d\n",fil_head->size,fil_head->offset,fil_head->id);
 
     //接收文件内容
     if(recvData(send_arg->event->data.fd,(char*)fil_recv,fil_head->size) != fil_head->size)
     {
         printf("receive file failed\n");
-        exit(-1);
+        pthread_exit(NULL);
     }
-    
+
     printf("读取数据部分完成\n");
     printf("---------开始映射 id = %d-----------\n",fil_head->id);
 
@@ -89,7 +94,6 @@ void* EpollTcp::work(void* arg)
     printf("接收完一个块\n");
     //通知客户端断开这次连接
     printf("通知断开\n");
-   // close(send_arg->event->data.fd);
     delEpollEvent(send_arg->ep,send_arg->event);
     free(fil_recv);
     free(fil_head);
@@ -163,9 +167,7 @@ int EpollTcp::wait()
         int num = epoll_wait(efd,events,MAXEVENT,0);
         // printf("-----wating num = %d ----------\n",num);
         if(num == -1){printf("epool_wait failed\n"); exit(-1);}
-        if(num!=0)printf("num = %d\n",num);
         if(dealTransaction(num) == -1){printf("dealTransaction failed\n");return -1;}
-
     }
     return 0;
 }
@@ -186,9 +188,9 @@ int EpollTcp::dealTransaction(int num)
                         printf("registerClient failed\n");
                         return -1;   
                     }
-                }else //客户端发来数据
+                }else if(events[i].events & EPOLLIN)//客户端发来数据
                 {
-                    epoll_ctl(efd, EPOLL_CTL_DEL, events[i].data.fd, &events[i]);
+                     epoll_ctl(efd, EPOLL_CTL_DEL, events[i].data.fd, &events[i]);
                     //将任务加入工作队列
                     dealTask(&events[i]);
                 }
@@ -216,9 +218,20 @@ int EpollTcp::dealTask(struct epoll_event *event)
         //取出数据大小部分 和 传输类型部分
         int size;
         int type;
-        recvData(event->data.fd, (char*)&size, INTSIZE);
-        recvData(event->data.fd, (char*)&type, INTSIZE);
+        char buf[INTSIZE];
+        memset(buf, 0,INTSIZE);
+        int ret =  recvData(event->data.fd,buf, INTSIZE);
+        if(ret == 0 ) return 0;
+        memcpy(&size , buf , INTSIZE);
+
+        memset(buf, 0,INTSIZE);
+        ret =   recvData(event->data.fd, buf, INTSIZE);
+        if(ret == 0)return 0;
+        memcpy(&type , buf , INTSIZE);
         
+        printf("recv type = %d  size = %d \n",type,size);
+
+
         if(type == type_filinfo)
         {
             //建立新的文件传输
@@ -245,7 +258,7 @@ int EpollTcp::dealTask(struct epoll_event *event)
             thpool.addTask(work,(void*)arg);
         }else
         {
-            printf("erro tye\n");
+            printf("error type =  %d\n",type);
             exit(-1);
         }
     return 0;
@@ -390,6 +403,7 @@ bool EpollTcp::sendData(int sockfd , const void* data ,int data_size )
 //当一个TCP连接断开时 关闭套接字 将事件从epoll中删除
 void EpollTcp::delEpollEvent(EpollTcp* ep,struct epoll_event* event)
 {
-    epoll_ctl(ep->efd,EPOLL_CTL_DEL,event->data.fd,event);
     close(event->data.fd);
+    epoll_ctl(ep->efd,EPOLL_CTL_DEL,event->data.fd,event);
+   
 }

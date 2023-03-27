@@ -212,28 +212,49 @@ bool Client::sendFile()
 
 }
 
+
 //将文件数据部分传输给服务器端
 void Client::sendBlockData(const int sockfd,const char*  mp , const int offset ,const int send_size,const int id)
 {
+    printf("传入参数：id = %d offset = %d size = %d \n",id,offset,send_size);
     struct st_head* head  = new st_head();
     head->id = id ;
     head->offset = offset;
     head->size = send_size;
 
     int left_send = INTSIZE;
-    
     int type = type_fildata ; 
     //先发送后面数据的长度
-    int size = INTSIZE+head->size+INTSIZE;
-    Csend(sockfd, (char*)&size, INTSIZE); 
+    int size = INTSIZE+head->size+sizeof(struct st_head);
+
+
+    char buf_size[INTSIZE];
+    char buf_type[INTSIZE];
+    char* buf_head = (char*)malloc(sizeof(struct st_head));
+    memset(buf_size, 0,INTSIZE);
+    memset(buf_type, 0,INTSIZE);
+    
+    memcpy(buf_size, &size,INTSIZE);
+    memcpy(buf_type, &type,INTSIZE);
+    memcpy(buf_head, (char*)head,sizeof(struct st_head));
+
+
+    Csend(sockfd, buf_size, INTSIZE); 
+    printf("size = %d  type = %d \n",*(int*)buf_size,*(int*)buf_type);
    
      //发送type
-    Csend(sockfd, (char*)&type, INTSIZE);
+    Csend(sockfd, buf_type, INTSIZE);
     
     //在发送头部
-    Csend(sockfd, (char*)head,sizeof(struct st_head));
+    Csend(sockfd, buf_head,sizeof(struct st_head));
+    //打印一下发送的头部
+    printf("-------------打印头部信息-----\n");
+    printf("head->size = %d head->offset = %d  head->id = %d\n",((st_head*)buf_head)->size,((st_head*)buf_head)->offset,((st_head*)buf_head)->id);
+    
 
 
+
+    //发送数据
     Csend(sockfd, mp, send_size);
     
 

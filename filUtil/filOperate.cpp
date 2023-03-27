@@ -129,7 +129,7 @@ int recvData(int sockfd , char* buf , int recv_size)
         if(cur_recv==0)
         {
            perror("传输异常断开\n");
-           exit(-1);
+           return 0;
         }else
         {
             total_recv+=cur_recv;

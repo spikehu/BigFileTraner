@@ -30,7 +30,7 @@ struct st_head
     int id ; //自己所属于的文件
     int offset ;//偏移量
     int size ; //这次传输数据块的大小
-    st_head():id(-1),offset(0),size(0){}
+    st_head():id(0),offset(0),size(0){}
 };
 
 struct st_filInfo
